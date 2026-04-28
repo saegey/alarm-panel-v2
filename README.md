@@ -37,6 +37,7 @@ PlatformIO project for an `ESP32-WROOM-32` driving an `ILI9341` 240x320 SPI TFT 
 - `TFT_eSPI` is configured locally through `platformio.ini` build flags. No global library files need to be edited.
 - Touch calibration values in `include/pin_config.h` are safe starter values and will likely need tuning on real hardware.
 - MQTT credentials and broker settings live in `include/secrets.h`. This file is gitignored by default.
+- The project uses a custom OTA partition table with no SPIFFS/LittleFS partition so both OTA app slots are larger.
 
 ## Project Layout
 

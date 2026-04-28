@@ -69,10 +69,6 @@ void setStatusLabelText(const char *text, lv_color_t color) {
   lv_obj_set_style_text_color(statusLabel, color, LV_PART_MAIN);
 }
 
-bool isDisarmedState(const char *state) {
-  return strcmp(state, "disarmed") == 0;
-}
-
 const char *targetName(AlarmTarget target) {
   switch (target) {
     case AlarmTarget::Master:
@@ -112,74 +108,6 @@ const char *armModeCommand(ArmMode mode) {
   }
 
   return "arm_home";
-}
-
-const char *friendlyAlarmState(const char *state) {
-  if (strcmp(state, "open") == 0) {
-    return "Open";
-  }
-  if (strcmp(state, "closed") == 0) {
-    return "Closed";
-  }
-  if (strcmp(state, "opening") == 0) {
-    return "Opening";
-  }
-  if (strcmp(state, "closing") == 0) {
-    return "Closing";
-  }
-  if (strcmp(state, "disarmed") == 0) {
-    return "Disarmed";
-  }
-  if (strcmp(state, "arming") == 0) {
-    return "Arming";
-  }
-  if (strcmp(state, "armed_home") == 0) {
-    return "Armed Home";
-  }
-  if (strcmp(state, "armed_away") == 0) {
-    return "Armed Away";
-  }
-  if (strcmp(state, "armed_night") == 0) {
-    return "Armed Night";
-  }
-  if (strcmp(state, "armed_vacation") == 0) {
-    return "Armed Vacation";
-  }
-  if (strcmp(state, "armed_custom_bypass") == 0) {
-    return "Armed Custom";
-  }
-  if (strcmp(state, "pending") == 0) {
-    return "Pending";
-  }
-  if (strcmp(state, "triggered") == 0) {
-    return "Triggered";
-  }
-  if (strcmp(state, "unknown") == 0) {
-    return "Waiting";
-  }
-  return state;
-}
-
-lv_color_t alarmStateColor(const char *state) {
-  if (strcmp(state, "closed") == 0) {
-    return lv_color_hex(0x7BD389);
-  }
-  if (strcmp(state, "open") == 0) {
-    return lv_color_hex(0xE76F51);
-  }
-  if (strcmp(state, "opening") == 0 || strcmp(state, "closing") == 0) {
-    return lv_color_hex(0xF2C14E);
-  }
-  if (strcmp(state, "disarmed") == 0) {
-    return lv_color_hex(0x7BD389);
-  }
-  if (strcmp(state, "arming") == 0 || strcmp(state, "pending") == 0) {
-    return lv_color_hex(0xF2C14E);
-  }
-  if (strcmp(state, "unknown") == 0) {
-    return lv_color_hex(0xA8DADC);
-  }
-  return lv_color_hex(0xE76F51);
 }
 
 // --- Animation helpers ---
@@ -455,9 +383,9 @@ void showTriggeredOverlay() {
   wakeDisplay();
 
   const char *source = "";
-  if (strcmp(masterAlarmState, "triggered") == 0) {
+  if (isTriggeredState(parseAlarmLifecycleState(masterAlarmState))) {
     source = "Master Alarm";
-  } else if (strcmp(garageAlarmState, "triggered") == 0) {
+  } else if (isTriggeredState(parseAlarmLifecycleState(garageAlarmState))) {
     source = "Garage Alarm";
   }
   if (triggeredSourceLabel != nullptr) {
@@ -473,8 +401,8 @@ void showTriggeredOverlay() {
 }  // namespace
 
 void checkTriggeredState() {
-  const bool anyTriggered = strcmp(masterAlarmState, "triggered") == 0 ||
-                             strcmp(garageAlarmState, "triggered") == 0;
+  const bool anyTriggered = isTriggeredState(parseAlarmLifecycleState(masterAlarmState)) ||
+                            isTriggeredState(parseAlarmLifecycleState(garageAlarmState));
 
   if (anyTriggered && !triggeredDismissed) {
     showTriggeredOverlay();
@@ -532,9 +460,10 @@ void updatePrimaryActionButton() {
   }
 
   if (selectedTarget == AlarmTarget::GarageDoor) {
-    const bool isClosed = strcmp(targetState(selectedTarget), "closed") == 0;
+    const AlarmLifecycleState state = parseAlarmLifecycleState(targetState(selectedTarget));
+    const bool isClosed = state == AlarmLifecycleState::Closed;
     lv_label_set_text(primaryActionLabel, isClosed ? "Open" : "Close");
-    pendingAction = isClosed ? AlarmAction::Arm : AlarmAction::Disarm;
+    pendingAction = nextActionForTargetState(selectedTarget, state);
     if (armModesContainer != nullptr) {
       lv_obj_add_flag(armModesContainer, LV_OBJ_FLAG_HIDDEN);
     }
@@ -548,8 +477,9 @@ void updatePrimaryActionButton() {
     return;
   }
 
-  if (isDisarmedState(targetState(selectedTarget))) {
-    pendingAction = AlarmAction::Arm;
+  const AlarmLifecycleState state = parseAlarmLifecycleState(targetState(selectedTarget));
+  pendingAction = nextActionForTargetState(selectedTarget, state);
+  if (pendingAction == AlarmAction::Arm) {
     if (armModesContainer != nullptr) {
       lv_obj_clear_flag(armModesContainer, LV_OBJ_FLAG_HIDDEN);
     }
@@ -562,7 +492,6 @@ void updatePrimaryActionButton() {
     }
   } else {
     lv_label_set_text(primaryActionLabel, "Disarm");
-    pendingAction = AlarmAction::Disarm;
     if (armModesContainer != nullptr) {
       lv_obj_add_flag(armModesContainer, LV_OBJ_FLAG_HIDDEN);
     }

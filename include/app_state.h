@@ -26,6 +26,23 @@ enum class AlarmAction {
   Disarm,
 };
 
+enum class AlarmLifecycleState {
+  Unknown,
+  Disarmed,
+  Arming,
+  ArmedHome,
+  ArmedAway,
+  ArmedNight,
+  ArmedVacation,
+  ArmedCustomBypass,
+  Pending,
+  Triggered,
+  Open,
+  Closed,
+  Opening,
+  Closing,
+};
+
 enum class ArmMode {
   Home,
   Away,
@@ -107,3 +124,6 @@ const char *targetState(AlarmTarget target);
 const char *targetName(AlarmTarget target);
 const char *armModeCommand(ArmMode mode);
 bool isDisarmedState(const char *state);
+AlarmLifecycleState parseAlarmLifecycleState(const char *state);
+bool isTriggeredState(AlarmLifecycleState state);
+AlarmAction nextActionForTargetState(AlarmTarget target, AlarmLifecycleState state);

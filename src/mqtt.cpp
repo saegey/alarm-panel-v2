@@ -103,9 +103,9 @@ bool publishAlarmoCommand(const char *command, const char *code) {
 
 bool executeAlarmAction(AlarmTarget target, AlarmAction action, const char *code) {
   if (target == AlarmTarget::GarageDoor) {
-    const bool wantsOpen = action == AlarmAction::Arm;
-    if ((wantsOpen && strcmp(garageDoorState, "open") == 0) ||
-        (!wantsOpen && strcmp(garageDoorState, "closed") == 0)) {
+    const AlarmLifecycleState currentState = parseAlarmLifecycleState(garageDoorState);
+    const AlarmAction nextAction = nextActionForTargetState(target, currentState);
+    if (nextAction != action) {
       Serial.println("[MQTT] Garage door already in requested state");
       return true;
     }

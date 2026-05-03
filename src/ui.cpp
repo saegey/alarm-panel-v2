@@ -454,6 +454,16 @@ void onTriggeredOverlayClicked(lv_event_t *event) {
   hideTriggeredOverlay();
 }
 
+void updatePrimaryActionButton();
+
+void promptGarageDisarmBeforeDoorOpen() {
+  selectedTarget = AlarmTarget::Garage;
+  lv_label_set_text(actionStateLabel, friendlyAlarmState(targetState(selectedTarget)));
+  updatePrimaryActionButton();
+  lv_label_set_text(pinPromptLabel, "Disarm garage to open door");
+  showToast("Garage alarm is armed");
+}
+
 void updatePrimaryActionButton() {
   if (primaryActionButton == nullptr || primaryActionLabel == nullptr) {
     return;
@@ -561,6 +571,12 @@ void onAlarmPanelPressed(lv_event_t *event) {
 void onPrimaryActionPressed(lv_event_t *event) {
   LV_UNUSED(event);
   if (selectedTarget == AlarmTarget::GarageDoor) {
+    if (pendingAction == AlarmAction::Arm && !isDisarmedState(garageAlarmState)) {
+      Serial.println("[UI] Garage door open blocked, garage alarm must be disarmed");
+      promptGarageDisarmBeforeDoorOpen();
+      return;
+    }
+
     Serial.printf("[UI] Executing garage door %s\n",
                   pendingAction == AlarmAction::Arm ? "open" : "close");
     executeAlarmAction(selectedTarget, pendingAction, "");
@@ -660,7 +676,96 @@ void onPinSubmitPressed(lv_event_t *event) {
   executeAlarmAction(selectedTarget, pendingAction, pinBuffer);
   closeActionModal();
 }
+
 }  // namespace
+
+#if defined(WOKWI_SIM)
+void handleSimInputChar(char c) {
+  switch (c) {
+    case 'm':
+    case 'M':
+      openActionModal(AlarmTarget::Master);
+      Serial.println("[SIM] Opened Master modal");
+      return;
+    case 'g':
+    case 'G':
+      openActionModal(AlarmTarget::Garage);
+      Serial.println("[SIM] Opened Garage modal");
+      return;
+    case 'd':
+    case 'D':
+      openActionModal(AlarmTarget::GarageDoor);
+      Serial.println("[SIM] Opened Garage Door modal");
+      return;
+    case 'a':
+    case 'A':
+      onPrimaryActionPressed(nullptr);
+      Serial.println("[SIM] Primary action");
+      return;
+    case 'h':
+    case 'H':
+      selectedArmMode = ArmMode::Home;
+      if (pendingAction == AlarmAction::Arm && selectedTarget != AlarmTarget::GarageDoor) {
+        executeAlarmAction(selectedTarget, AlarmAction::Arm, "");
+        closeActionModal();
+        Serial.println("[SIM] Arm Home");
+      }
+      return;
+    case 'w':
+    case 'W':
+      selectedArmMode = ArmMode::Away;
+      if (pendingAction == AlarmAction::Arm && selectedTarget != AlarmTarget::GarageDoor) {
+        executeAlarmAction(selectedTarget, AlarmAction::Arm, "");
+        closeActionModal();
+        Serial.println("[SIM] Arm Away");
+      }
+      return;
+    case 'n':
+    case 'N':
+      selectedArmMode = ArmMode::Night;
+      if (pendingAction == AlarmAction::Arm && selectedTarget != AlarmTarget::GarageDoor) {
+        executeAlarmAction(selectedTarget, AlarmAction::Arm, "");
+        closeActionModal();
+        Serial.println("[SIM] Arm Night");
+      }
+      return;
+    case 'v':
+    case 'V':
+      selectedArmMode = ArmMode::Vacation;
+      if (pendingAction == AlarmAction::Arm && selectedTarget != AlarmTarget::GarageDoor) {
+        executeAlarmAction(selectedTarget, AlarmAction::Arm, "");
+        closeActionModal();
+        Serial.println("[SIM] Arm Vacation");
+      }
+      return;
+    case 'x':
+    case 'X':
+      onPinBackspacePressed(nullptr);
+      return;
+    case 'c':
+    case 'C':
+      onPinCancelPressed(nullptr);
+      Serial.println("[SIM] Cancel");
+      return;
+    case 's':
+    case 'S':
+      onPinSubmitPressed(nullptr);
+      Serial.println("[SIM] Submit");
+      return;
+    default:
+      break;
+  }
+
+  if (c >= '0' && c <= '9') {
+    const size_t len = strlen(pinBuffer);
+    if (len < sizeof(pinBuffer) - 1) {
+      pinBuffer[len] = c;
+      pinBuffer[len + 1] = '\0';
+      updatePinLabel();
+    }
+  }
+}
+#endif
 
 // --- Widget factories ---
 

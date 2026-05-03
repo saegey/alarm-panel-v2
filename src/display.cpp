@@ -23,6 +23,10 @@ namespace {
 SPIClass touchSpi(HSPI);
 XPT2046_Touchscreen touch(PinConfig::TOUCH_CS_PIN, PinConfig::TOUCH_IRQ_PIN);
 uint32_t lastTouchLogMs = 0;
+uint32_t lastTouchDebugMs = 0;
+lv_point_t lastTouchPoint{};
+bool hasLastTouchPoint = false;
+uint8_t stableTouchSamples = 0;
 
 constexpr uint8_t BACKLIGHT_LEDC_CHANNEL = 0;
 constexpr uint32_t BACKLIGHT_LEDC_FREQ = 5000;
@@ -90,6 +94,7 @@ void setupDisplay() {
 }
 
 void setupTouch() {
+  pinMode(PinConfig::TOUCH_IRQ_PIN, INPUT_PULLUP);
   touchSpi.begin(PinConfig::TOUCH_SCLK_PIN, PinConfig::TOUCH_MISO_PIN,
                  PinConfig::TOUCH_MOSI_PIN, PinConfig::TOUCH_CS_PIN);
   touch.begin(touchSpi);
@@ -114,26 +119,34 @@ void displayFlush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *colorP
 
 namespace {
 bool mapTouchPoint(const TS_Point &rawPoint, lv_point_t &mappedPoint) {
-  if (rawPoint.x < PinConfig::TOUCH_RAW_MIN_X || rawPoint.x > PinConfig::TOUCH_RAW_MAX_X ||
-      rawPoint.y < PinConfig::TOUCH_RAW_MIN_Y || rawPoint.y > PinConfig::TOUCH_RAW_MAX_Y) {
+  const int16_t axisX = PinConfig::TOUCH_SWAP_XY ? rawPoint.y : rawPoint.x;
+  const int16_t axisY = PinConfig::TOUCH_SWAP_XY ? rawPoint.x : rawPoint.y;
+
+  const uint16_t axisXMin = PinConfig::TOUCH_SWAP_XY ? PinConfig::TOUCH_RAW_MIN_Y
+                                                     : PinConfig::TOUCH_RAW_MIN_X;
+  const uint16_t axisXMax = PinConfig::TOUCH_SWAP_XY ? PinConfig::TOUCH_RAW_MAX_Y
+                                                     : PinConfig::TOUCH_RAW_MAX_X;
+  const uint16_t axisYMin = PinConfig::TOUCH_SWAP_XY ? PinConfig::TOUCH_RAW_MIN_X
+                                                     : PinConfig::TOUCH_RAW_MIN_Y;
+  const uint16_t axisYMax = PinConfig::TOUCH_SWAP_XY ? PinConfig::TOUCH_RAW_MAX_X
+                                                     : PinConfig::TOUCH_RAW_MAX_Y;
+
+  if (axisX < axisXMin || axisX > axisXMax || axisY < axisYMin || axisY > axisYMax) {
     return false;
   }
 
-  const int16_t rawX = PinConfig::TOUCH_SWAP_XY ? rawPoint.y : rawPoint.x;
-  const int16_t rawY = PinConfig::TOUCH_SWAP_XY ? rawPoint.x : rawPoint.y;
-
   const int32_t mappedX =
       PinConfig::TOUCH_INVERT_X
-          ? map(rawX, PinConfig::TOUCH_RAW_MAX_Y, PinConfig::TOUCH_RAW_MIN_Y, 0,
+          ? map(axisX, axisXMax, axisXMin, 0,
                 PinConfig::SCREEN_WIDTH - 1)
-          : map(rawX, PinConfig::TOUCH_RAW_MIN_Y, PinConfig::TOUCH_RAW_MAX_Y, 0,
+          : map(axisX, axisXMin, axisXMax, 0,
                 PinConfig::SCREEN_WIDTH - 1);
 
   const int32_t mappedY =
       PinConfig::TOUCH_INVERT_Y
-          ? map(rawY, PinConfig::TOUCH_RAW_MAX_X, PinConfig::TOUCH_RAW_MIN_X, 0,
+          ? map(axisY, axisYMax, axisYMin, 0,
                 PinConfig::SCREEN_HEIGHT - 1)
-          : map(rawY, PinConfig::TOUCH_RAW_MIN_X, PinConfig::TOUCH_RAW_MAX_X, 0,
+          : map(axisY, axisYMin, axisYMax, 0,
                 PinConfig::SCREEN_HEIGHT - 1);
 
   mappedPoint.x = constrain(mappedX, 0, PinConfig::SCREEN_WIDTH - 1);
@@ -145,12 +158,44 @@ bool mapTouchPoint(const TS_Point &rawPoint, lv_point_t &mappedPoint) {
 void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   LV_UNUSED(drv);
 
-  if (!touch.touched()) {
+  const uint32_t now = millis();
+  const int irqLevel = digitalRead(PinConfig::TOUCH_IRQ_PIN);
+  const bool touched = touch.touched();
+
+  if (PinConfig::TOUCH_DEBUG_MODE && now - lastTouchDebugMs >= PinConfig::TOUCH_DEBUG_INTERVAL_MS) {
+    if (touched) {
+      const TS_Point debugPoint = touch.getPoint();
+      Serial.printf("[TOUCHDBG] irq=%d touched=%d raw=(%d,%d,%d) stable=%u\n", irqLevel, touched,
+                    debugPoint.x, debugPoint.y, debugPoint.z, stableTouchSamples);
+    } else {
+      Serial.printf("[TOUCHDBG] irq=%d touched=%d stable=%u\n", irqLevel, touched, stableTouchSamples);
+    }
+    lastTouchDebugMs = now;
+  }
+
+  // IRQ is active-low for XPT2046. Treat as a hint; some boards/wiring setups
+  // keep this line unreliable while touched() still reports valid state.
+  if (irqLevel == HIGH && !touched) {
+    hasLastTouchPoint = false;
+    stableTouchSamples = 0;
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+
+  if (!touched) {
+    hasLastTouchPoint = false;
+    stableTouchSamples = 0;
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
 
   const TS_Point rawPoint = touch.getPoint();
+  if (rawPoint.z < PinConfig::TOUCH_PRESSURE_MIN) {
+    stableTouchSamples = 0;
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+
   lv_point_t mappedPoint{};
 
   if (displayState == DisplayState::Sleeping) {
@@ -173,13 +218,33 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   }
 
   if (!mapTouchPoint(rawPoint, mappedPoint)) {
+    stableTouchSamples = 0;
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+
+  // Reject single-frame spikes from the resistive controller when signal is noisy.
+  if (hasLastTouchPoint) {
+    constexpr int16_t kMaxStepPx = 60;
+    if (abs(mappedPoint.x - lastTouchPoint.x) > kMaxStepPx ||
+        abs(mappedPoint.y - lastTouchPoint.y) > kMaxStepPx) {
+      stableTouchSamples = 0;
+      data->state = LV_INDEV_STATE_RELEASED;
+      return;
+    }
+  }
+
+  // Require two consistent reads before emitting PRESSED to suppress idle noise.
+  if (stableTouchSamples < 2) {
+    stableTouchSamples++;
+    lastTouchPoint = mappedPoint;
+    hasLastTouchPoint = true;
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
 
   resetIdleTimer();
 
-  const uint32_t now = millis();
   if (now - lastTouchLogMs >= 150) {
     Serial.printf("[TOUCH] raw=(%d,%d,%d) mapped=(%d,%d)\n", rawPoint.x, rawPoint.y, rawPoint.z,
                   mappedPoint.x, mappedPoint.y);
@@ -188,4 +253,6 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
 
   data->state = LV_INDEV_STATE_PRESSED;
   data->point = mappedPoint;
+  lastTouchPoint = mappedPoint;
+  hasLastTouchPoint = true;
 }

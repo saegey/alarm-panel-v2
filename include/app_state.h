@@ -127,3 +127,7 @@ bool isDisarmedState(const char *state);
 AlarmLifecycleState parseAlarmLifecycleState(const char *state);
 bool isTriggeredState(AlarmLifecycleState state);
 AlarmAction nextActionForTargetState(AlarmTarget target, AlarmLifecycleState state);
+
+#if defined(WOKWI_SIM)
+void handleSimInputChar(char c);
+#endif

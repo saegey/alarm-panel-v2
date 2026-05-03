@@ -25,6 +25,20 @@ void updateMqttStatusLabel(bool connected) {
 }
 
 namespace {
+#if defined(WOKWI_SIM)
+constexpr const char *MQTT_HOST_RUNTIME = "broker.hivemq.com";
+constexpr uint16_t MQTT_PORT_RUNTIME = 1883;
+constexpr const char *MQTT_USERNAME_RUNTIME = nullptr;
+constexpr const char *MQTT_PASSWORD_RUNTIME = nullptr;
+constexpr const char *MQTT_CLIENT_ID_RUNTIME = "alarm-panel-wokwi";
+#else
+constexpr const char *MQTT_HOST_RUNTIME = Secrets::MQTT_HOST;
+constexpr uint16_t MQTT_PORT_RUNTIME = Secrets::MQTT_PORT;
+constexpr const char *MQTT_USERNAME_RUNTIME = Secrets::MQTT_USERNAME;
+constexpr const char *MQTT_PASSWORD_RUNTIME = Secrets::MQTT_PASSWORD;
+constexpr const char *MQTT_CLIENT_ID_RUNTIME = Secrets::MQTT_CLIENT_ID;
+#endif
+
 void parseWeatherMessage(const char *message) {
   const char *temperatureKey = strstr(message, "\"temperature\":");
   const char *stateKey = strstr(message, "\"state\":\"");
@@ -103,6 +117,12 @@ bool publishAlarmoCommand(const char *command, const char *code) {
 
 bool executeAlarmAction(AlarmTarget target, AlarmAction action, const char *code) {
   if (target == AlarmTarget::GarageDoor) {
+    if (action == AlarmAction::Arm && !isDisarmedState(garageAlarmState)) {
+      Serial.printf("[MQTT] Garage door open blocked, garage alarm state=%s\n", garageAlarmState);
+      showToast("Disarm garage first");
+      return false;
+    }
+
     const AlarmLifecycleState currentState = parseAlarmLifecycleState(garageDoorState);
     const AlarmAction nextAction = nextActionForTargetState(target, currentState);
     if (nextAction != action) {
@@ -223,9 +243,9 @@ bool connectMqtt() {
     return true;
   }
 
-  Serial.printf("[MQTT] Connecting to %s:%u\n", Secrets::MQTT_HOST, Secrets::MQTT_PORT);
+  Serial.printf("[MQTT] Connecting to %s:%u\n", MQTT_HOST_RUNTIME, MQTT_PORT_RUNTIME);
   const bool connected =
-      mqttClient.connect(Secrets::MQTT_CLIENT_ID, Secrets::MQTT_USERNAME, Secrets::MQTT_PASSWORD,
+      mqttClient.connect(MQTT_CLIENT_ID_RUNTIME, MQTT_USERNAME_RUNTIME, MQTT_PASSWORD_RUNTIME,
                          Secrets::MQTT_TOPIC_STATUS, 0, true, "offline");
   if (!connected) {
     Serial.printf("[MQTT] Connect failed, state=%d\n", mqttClient.state());

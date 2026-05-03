@@ -34,4 +34,12 @@ constexpr uint16_t TOUCH_RAW_MIN_X = 600;
 constexpr uint16_t TOUCH_RAW_MAX_X = 3500;
 constexpr uint16_t TOUCH_RAW_MIN_Y = 500;
 constexpr uint16_t TOUCH_RAW_MAX_Y = 3700;
+
+// Pressure floor used to discard floating/noise samples from XPT2046.
+// Keep this conservative so light presses still register.
+constexpr uint16_t TOUCH_PRESSURE_MIN = 50;
+
+// Temporary diagnostics for touch electrical debugging.
+constexpr bool TOUCH_DEBUG_MODE = true;
+constexpr uint16_t TOUCH_DEBUG_INTERVAL_MS = 100;
 }  // namespace PinConfig

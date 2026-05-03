@@ -23,6 +23,18 @@ constexpr uint32_t WATCHDOG_TIMEOUT_SEC = 30;
 constexpr char NVS_NAMESPACE[] = "alarm-panel";
 constexpr char NVS_KEY_TIMEOUT[] = "dispTimeout";
 constexpr char NVS_KEY_BRIGHTNESS[] = "brightness";
+
+#if defined(WOKWI_SIM)
+constexpr char WIFI_SSID_RUNTIME[] = "Wokwi-GUEST";
+constexpr char WIFI_PASSWORD_RUNTIME[] = "";
+constexpr char MQTT_HOST_RUNTIME[] = "broker.hivemq.com";
+constexpr uint16_t MQTT_PORT_RUNTIME = 1883;
+#else
+constexpr const char *WIFI_SSID_RUNTIME = Secrets::WIFI_SSID;
+constexpr const char *WIFI_PASSWORD_RUNTIME = Secrets::WIFI_PASSWORD;
+constexpr const char *MQTT_HOST_RUNTIME = Secrets::MQTT_HOST;
+constexpr uint16_t MQTT_PORT_RUNTIME = Secrets::MQTT_PORT;
+#endif
 }  // namespace
 
 // --- Functions ---
@@ -103,9 +115,9 @@ void connectWifi() {
     return;
   }
 
-  Serial.printf("[WIFI] Connecting to %s\n", Secrets::WIFI_SSID);
+  Serial.printf("[WIFI] Connecting to %s\n", WIFI_SSID_RUNTIME);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(Secrets::WIFI_SSID, Secrets::WIFI_PASSWORD);
+  WiFi.begin(WIFI_SSID_RUNTIME, WIFI_PASSWORD_RUNTIME);
 
   uint8_t retries = 0;
   while (WiFi.status() != WL_CONNECTED && retries < 40) {
@@ -158,7 +170,7 @@ void setup() {
   setupTouch();
   setupLvgl();
   setupWatchdog();
-  mqttClient.setServer(Secrets::MQTT_HOST, Secrets::MQTT_PORT);
+  mqttClient.setServer(MQTT_HOST_RUNTIME, MQTT_PORT_RUNTIME);
   mqttClient.setCallback(mqttCallback);
 
   lastLvglTickMs = millis();
@@ -166,6 +178,10 @@ void setup() {
 
   connectWifi();
   connectMqtt();
+
+#if defined(WOKWI_SIM)
+  Serial.println("[SIM] Controls: m=master g=garage d=door a=primary h/w/n/v=arm modes 0-9 pin s=submit c=cancel x=backspace");
+#endif
 }
 
 void loop() {
@@ -177,5 +193,13 @@ void loop() {
   if (mqttClient.connected()) {
     mqttClient.loop();
   }
+#if defined(WOKWI_SIM)
+  while (Serial.available() > 0) {
+    const int value = Serial.read();
+    if (value >= 0) {
+      handleSimInputChar(static_cast<char>(value));
+    }
+  }
+#endif
   loopLvgl();
 }

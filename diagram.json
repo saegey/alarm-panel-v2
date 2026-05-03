@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "author": "alarm-panel",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-ili9341",
+      "id": "tft",
+      "top": -10,
+      "left": 260,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-xpt2046",
+      "id": "touch",
+      "top": 180,
+      "left": 260,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX0", "$serialMonitor:TX", "", [] ],
+    [ "esp:D13", "tft:MOSI", "green" ],
+    [ "esp:D12", "tft:MISO", "green" ],
+    [ "esp:D14", "tft:SCK", "green" ],
+    [ "esp:D15", "tft:CS", "green" ],
+    [ "esp:D2", "tft:D/C", "green" ],
+    [ "esp:D4", "tft:RST", "green" ],
+    [ "esp:D21", "tft:LED", "green" ],
+    [ "esp:3V3", "tft:VCC", "red" ],
+    [ "esp:GND.1", "tft:GND", "black" ],
+
+    [ "esp:D32", "touch:MOSI", "blue" ],
+    [ "esp:D39", "touch:MISO", "blue" ],
+    [ "esp:D25", "touch:SCK", "blue" ],
+    [ "esp:D33", "touch:CS", "blue" ],
+    [ "esp:3V3", "touch:VCC", "red" ],
+    [ "esp:GND.1", "touch:GND", "black" ]
+  ],
+    "serialMonitor": {
+    "convertEol": true,
+    "display": "always"
+  }
+}

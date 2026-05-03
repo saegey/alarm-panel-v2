@@ -158,6 +158,51 @@ Notes:
 pio run -e esp32dev-ota -t upload --upload-port 192.168.1.123
 ```
 
+## Wokwi Simulation
+
+The project includes Wokwi files:
+
+- `diagram.json`
+- `wokwi.toml`
+- `env:esp32dev-wokwi` in `platformio.ini`
+
+Build for Wokwi:
+
+```bash
+pio run -e esp32dev-wokwi
+```
+
+When built with `env:esp32dev-wokwi`, firmware automatically uses:
+
+- Wi-Fi SSID: `Wokwi-GUEST`
+- Wi-Fi password: empty
+- MQTT broker: `broker.hivemq.com:1883`
+
+Your normal hardware environments (`esp32dev`, `esp32dev-ota`) continue to use values from `include/secrets.h`.
+
+### MQTT Harness For Wokwi
+
+Use the included helper to mimic Home Assistant-like topic updates and log keypad commands:
+
+```bash
+python3 -m pip install paho-mqtt
+python3 scripts/wokwi_mqtt_harness.py
+```
+
+The harness publishes:
+
+- `weather/kbfi/state` JSON payloads
+- `alarmo/state`
+- `alarmo/garage/state`
+- `garage/door/state`
+
+And listens for:
+
+- `alarmo/command`
+- `garage/door/command`
+- `home/keypad/display/set`
+- `home/keypad/status`
+
 ## What Happens Today
 
 - The backlight is enabled on `GPIO21`

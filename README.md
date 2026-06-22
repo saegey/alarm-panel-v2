@@ -36,7 +36,7 @@ PlatformIO project for an `ESP32-WROOM-32` driving an `ILI9341` 240x320 SPI TFT 
 - `GPIO12` is a boot strapping pin on ESP32. If boot issues occur, move display `MISO` off `GPIO12` and update `include/pin_config.h` plus `platformio.ini` build flags.
 - `TFT_eSPI` is configured locally through `platformio.ini` build flags. No global library files need to be edited.
 - Touch calibration values in `include/pin_config.h` are safe starter values and will likely need tuning on real hardware.
-- MQTT credentials and broker settings live in `include/secrets.h`. This file is gitignored by default.
+- Runtime secrets are sourced from 1Password and rendered into `include/secrets.h`. That generated file is gitignored and should be treated as a build artifact, not the source of truth.
 - The project uses a custom OTA partition table with no SPIFFS/LittleFS partition so both OTA app slots are larger.
 
 ## Project Layout
@@ -44,8 +44,9 @@ PlatformIO project for an `ESP32-WROOM-32` driving an `ILI9341` 240x320 SPI TFT 
 - `platformio.ini`: PlatformIO environment and TFT_eSPI build-time configuration
 - `include/pin_config.h`: Pin definitions and touch calibration bounds
 - `include/lv_conf.h`: Local LVGL configuration
-- `include/secrets.example.h`: Template for WiFi and MQTT settings
-- `include/secrets.h`: Local uncommitted WiFi and MQTT settings
+- `include/secrets.example.h`: Template showing the generated header shape
+- `include/secrets.h`: Generated local secrets header from 1Password
+- `scripts/render_secrets_header.py`: Generates `include/secrets.h` from 1Password
 - `src/main.cpp`: Hardware setup, LVGL integration, UI, and placeholder actions
 
 ## Current UI
@@ -63,13 +64,37 @@ PlatformIO project for an `ESP32-WROOM-32` driving an `ILI9341` 240x320 SPI TFT 
 
 The project now includes a first-pass WiFi and MQTT client using `PubSubClient`.
 
-Edit `include/secrets.h` and replace the placeholder values with:
+## 1Password Schema
 
-- Your WiFi SSID and password
-- Your MQTT broker IP or hostname
-- Your MQTT port
-- The client ID and publish topics you want to use
-- Your MQTT username and password
+Create a 1Password item named `Alarm Panel` in vault `Homelab` with these fields:
+
+- `wifi_ssid`
+- `wifi_password`
+- `mqtt_host`
+- `mqtt_port`
+- `mqtt_client_id`
+- `mqtt_username`
+- `mqtt_password`
+- `ota_hostname`
+- `ota_password`
+
+Create or keep a separate `Wokwi CLI` item in the same vault with:
+
+- `credential`
+
+You can override those default references at runtime with:
+
+- `OP_VAULT`
+- `OP_ITEM`
+- `OP_OTA_HOSTNAME_REF`
+- `OP_OTA_PASSWORD_REF`
+- `OP_WOKWI_TOKEN_REF`
+
+Generate the local header with:
+
+```bash
+python3 scripts/render_secrets_header.py
+```
 
 Current publish topics are:
 
@@ -115,8 +140,8 @@ Behavior:
 Run these commands from the project root:
 
 ```bash
-pio run
-pio run -t upload
+just build
+just flash
 pio device monitor
 ```
 
@@ -124,10 +149,10 @@ pio device monitor
 
 The project includes `ArduinoOTA` so you can update over Wi-Fi after the first USB flash.
 
-Configure these in `include/secrets.h`:
+Configure these in the 1Password `Alarm Panel` item:
 
-- `OTA_HOSTNAME`
-- `OTA_PASSWORD`
+- `ota_hostname`
+- `ota_password`
 
 After the device joins Wi-Fi, it advertises itself as:
 
@@ -142,20 +167,28 @@ pio run -e esp32dev -t upload
 Wireless OTA upload:
 
 ```bash
-pio run -e esp32dev-ota -t upload
+just flash
+```
+
+Override the OTA upload target explicitly when needed:
+
+```bash
+just flash 192.168.1.123
+just flash alarm-panel.local
 ```
 
 Notes:
 
 - The first flash still needs USB.
 - The device must be on Wi-Fi and powered on.
-- `platformio.ini` contains a dedicated `esp32dev-ota` environment that uses `espota` and the OTA password.
-- If you change `OTA_PASSWORD` in `include/secrets.h`, update the OTA upload flag in `platformio.ini` to match.
+- `platformio.ini` uses `OTA_PASSWORD` from the environment at upload time.
+- `just flash` reads `ota_password` and `ota_hostname` from 1Password at upload time.
+- If no explicit target is given, `just flash` uploads to `ota_hostname.local`.
 - OTA progress is logged to Serial if a monitor is attached.
 - If mDNS is unreliable on your network, override the upload host:
 
 ```bash
-pio run -e esp32dev-ota -t upload --upload-port 192.168.1.123
+just flash 192.168.1.123
 ```
 
 ## Wokwi Simulation
@@ -169,7 +202,7 @@ The project includes Wokwi files:
 Build for Wokwi:
 
 ```bash
-pio run -e esp32dev-wokwi
+just build
 ```
 
 When built with `env:esp32dev-wokwi`, firmware automatically uses:
@@ -185,9 +218,11 @@ Your normal hardware environments (`esp32dev`, `esp32dev-ota`) continue to use v
 Use the included helper to mimic Home Assistant-like topic updates and log keypad commands:
 
 ```bash
-python3 -m pip install paho-mqtt
-python3 scripts/wokwi_mqtt_harness.py
+just harness
 ```
+
+`just sim` reads the Wokwi token from `op://Homelab/Wokwi CLI/credential`. Override the reference with `OP_WOKWI_TOKEN_REF` if your item lives elsewhere.
+`just sim` runs the headless Wokwi CLI. It does not open the browser-based visual simulator; it streams serial logs in the terminal and exits after `WOKWI_TIMEOUT_MS` milliseconds. The default is `300000` (5 minutes).
 
 The harness publishes:
 

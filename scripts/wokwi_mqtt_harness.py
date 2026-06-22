@@ -7,13 +7,20 @@ Publishes fake Home Assistant state topics and logs keypad command topics.
 
 import argparse
 import json
+import os
 import random
 import signal
 import sys
 import time
 from typing import Any
 
-import paho.mqtt.client as mqtt
+try:
+  import paho.mqtt.client as mqtt
+except ModuleNotFoundError as exc:
+  raise SystemExit(
+      "Missing paho-mqtt. Run this via `uv run --with paho-mqtt python3 scripts/wokwi_mqtt_harness.py` "
+      "or use `just harness`."
+  ) from exc
 
 
 DEFAULT_BROKER = "broker.hivemq.com"
@@ -24,15 +31,23 @@ TOPIC_DISPLAY_TIMEOUT = "home/keypad/display/timeout"
 TOPIC_WEATHER = "weather/kbfi/state"
 TOPIC_GARAGE_STATE = "garage/door/state"
 TOPIC_GARAGE_COMMAND = "garage/door/command"
-TOPIC_ALARMO_MASTER_STATE = "alarmo/state"
+TOPIC_ALARMO_PERIMETER_STATE = "alarmo/perimeter/state"
+TOPIC_ALARMO_INTERIOR_STATE = "alarmo/interior/state"
 TOPIC_ALARMO_GARAGE_STATE = "alarmo/garage/state"
 TOPIC_ALARMO_COMMAND = "alarmo/command"
 
 
 def parse_args() -> argparse.Namespace:
   parser = argparse.ArgumentParser(description="Wokwi MQTT test harness")
-  parser.add_argument("--host", default=DEFAULT_BROKER, help="MQTT broker host")
-  parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="MQTT broker port")
+  parser.add_argument("--host", default=os.getenv("MQTT_HOST", DEFAULT_BROKER), help="MQTT broker host")
+  parser.add_argument(
+      "--port",
+      type=int,
+      default=int(os.getenv("MQTT_PORT", str(DEFAULT_PORT))),
+      help="MQTT broker port",
+  )
+  parser.add_argument("--username", default=os.getenv("MQTT_USERNAME"), help="MQTT username")
+  parser.add_argument("--password", default=os.getenv("MQTT_PASSWORD"), help="MQTT password")
   parser.add_argument("--prefix", default="", help="Optional topic prefix (example: test/user1)")
   parser.add_argument("--interval", type=float, default=8.0, help="Weather publish interval seconds")
   return parser.parse_args()
@@ -70,8 +85,12 @@ def on_message(client: mqtt.Client, _userdata: Any, msg: mqtt.MQTTMessage) -> No
       return
     command = str(data.get("command", "")).lower()
     area = str(data.get("area", "")).lower()
-    is_garage = area == "garage"
-    state_topic = client.topic_alarmo_garage_state if is_garage else client.topic_alarmo_master_state
+    if area == "garage":
+      state_topic = client.topic_alarmo_garage_state
+    elif area == "interior":
+      state_topic = client.topic_alarmo_interior_state
+    else:
+      state_topic = client.topic_alarmo_perimeter_state
 
     command_to_state = {
         "arm_home": "armed_home",
@@ -87,7 +106,8 @@ def on_message(client: mqtt.Client, _userdata: Any, msg: mqtt.MQTTMessage) -> No
 
 
 def publish_initial_state(client: mqtt.Client) -> None:
-  client.publish(client.topic_alarmo_master_state, "disarmed", retain=True)
+  client.publish(client.topic_alarmo_perimeter_state, "disarmed", retain=True)
+  client.publish(client.topic_alarmo_interior_state, "disarmed", retain=True)
   client.publish(client.topic_alarmo_garage_state, "disarmed", retain=True)
   client.publish(client.topic_garage_state, "closed", retain=True)
   client.publish(client.topic_display_timeout, "30", retain=True)
@@ -110,6 +130,8 @@ def main() -> int:
   client = mqtt.Client(client_id=f"wokwi-harness-{int(time.time())}", clean_session=True)
   client.on_connect = on_connect
   client.on_message = on_message
+  if args.username:
+    client.username_pw_set(args.username, args.password)
 
   client.topic_status = with_prefix(prefix, "home/keypad/status")
   client.topic_display_set = with_prefix(prefix, TOPIC_DISPLAY_SET)
@@ -117,7 +139,8 @@ def main() -> int:
   client.topic_weather = with_prefix(prefix, TOPIC_WEATHER)
   client.topic_garage_state = with_prefix(prefix, TOPIC_GARAGE_STATE)
   client.topic_garage_command = with_prefix(prefix, TOPIC_GARAGE_COMMAND)
-  client.topic_alarmo_master_state = with_prefix(prefix, TOPIC_ALARMO_MASTER_STATE)
+  client.topic_alarmo_perimeter_state = with_prefix(prefix, TOPIC_ALARMO_PERIMETER_STATE)
+  client.topic_alarmo_interior_state = with_prefix(prefix, TOPIC_ALARMO_INTERIOR_STATE)
   client.topic_alarmo_garage_state = with_prefix(prefix, TOPIC_ALARMO_GARAGE_STATE)
   client.topic_alarmo_command = with_prefix(prefix, TOPIC_ALARMO_COMMAND)
   client.garage_state = "closed"

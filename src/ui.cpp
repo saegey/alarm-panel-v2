@@ -17,15 +17,18 @@ lv_indev_drv_t inputDriver;
 lv_indev_t *touchInputDevice = nullptr;
 
 lv_obj_t *statusLabel = nullptr;
-lv_obj_t *masterStateLabel = nullptr;
+lv_obj_t *perimeterStateLabel = nullptr;
+lv_obj_t *interiorStateLabel = nullptr;
 lv_obj_t *garageStateLabel = nullptr;
-lv_obj_t *masterStateDot = nullptr;
+lv_obj_t *perimeterStateDot = nullptr;
+lv_obj_t *interiorStateDot = nullptr;
 lv_obj_t *garageStateDot = nullptr;
 lv_obj_t *garageDoorStateLabel = nullptr;
 lv_obj_t *garageDoorStateDot = nullptr;
 lv_obj_t *clockLabel = nullptr;
 lv_obj_t *weatherLabel = nullptr;
-lv_obj_t *masterPanel = nullptr;
+lv_obj_t *perimeterPanel = nullptr;
+lv_obj_t *interiorPanel = nullptr;
 lv_obj_t *garagePanel = nullptr;
 lv_obj_t *garageDoorPanel = nullptr;
 lv_obj_t *actionModal = nullptr;
@@ -54,7 +57,7 @@ bool triggeredFlashState = false;
 uint32_t lastClockUpdateMs = 0;
 
 char pinBuffer[16] = "";
-AlarmTarget selectedTarget = AlarmTarget::Master;
+AlarmTarget selectedTarget = AlarmTarget::Perimeter;
 AlarmAction pendingAction = AlarmAction::None;
 }  // namespace
 
@@ -71,10 +74,12 @@ void setStatusLabelText(const char *text, lv_color_t color) {
 
 const char *targetName(AlarmTarget target) {
   switch (target) {
-    case AlarmTarget::Master:
-      return "Master Alarm";
+    case AlarmTarget::Perimeter:
+      return "Perimeter";
+    case AlarmTarget::Interior:
+      return "Interior";
     case AlarmTarget::Garage:
-      return "Garage Alarm";
+      return "Garage";
     case AlarmTarget::GarageDoor:
       return "Garage Door";
   }
@@ -84,8 +89,10 @@ const char *targetName(AlarmTarget target) {
 
 const char *targetState(AlarmTarget target) {
   switch (target) {
-    case AlarmTarget::Master:
-      return masterAlarmState;
+    case AlarmTarget::Perimeter:
+      return perimeterAlarmState;
+    case AlarmTarget::Interior:
+      return interiorAlarmState;
     case AlarmTarget::Garage:
       return garageAlarmState;
     case AlarmTarget::GarageDoor:
@@ -156,7 +163,8 @@ void setAlarmStateWidgets(lv_obj_t *label, lv_obj_t *dot, const char *state) {
 }  // namespace
 
 void updateAlarmLabels() {
-  setAlarmStateWidgets(masterStateLabel, masterStateDot, masterAlarmState);
+  setAlarmStateWidgets(perimeterStateLabel, perimeterStateDot, perimeterAlarmState);
+  setAlarmStateWidgets(interiorStateLabel, interiorStateDot, interiorAlarmState);
   setAlarmStateWidgets(garageStateLabel, garageStateDot, garageAlarmState);
   setAlarmStateWidgets(garageDoorStateLabel, garageDoorStateDot, garageDoorState);
 }
@@ -383,10 +391,12 @@ void showTriggeredOverlay() {
   wakeDisplay();
 
   const char *source = "";
-  if (isTriggeredState(parseAlarmLifecycleState(masterAlarmState))) {
-    source = "Master Alarm";
+  if (isTriggeredState(parseAlarmLifecycleState(perimeterAlarmState))) {
+    source = "Perimeter";
+  } else if (isTriggeredState(parseAlarmLifecycleState(interiorAlarmState))) {
+    source = "Interior";
   } else if (isTriggeredState(parseAlarmLifecycleState(garageAlarmState))) {
-    source = "Garage Alarm";
+    source = "Garage";
   }
   if (triggeredSourceLabel != nullptr) {
     lv_label_set_text(triggeredSourceLabel, source);
@@ -401,7 +411,8 @@ void showTriggeredOverlay() {
 }  // namespace
 
 void checkTriggeredState() {
-  const bool anyTriggered = isTriggeredState(parseAlarmLifecycleState(masterAlarmState)) ||
+  const bool anyTriggered = isTriggeredState(parseAlarmLifecycleState(perimeterAlarmState)) ||
+                            isTriggeredState(parseAlarmLifecycleState(interiorAlarmState)) ||
                             isTriggeredState(parseAlarmLifecycleState(garageAlarmState));
 
   if (anyTriggered && !triggeredDismissed) {
@@ -557,12 +568,15 @@ void onAlarmPanelPressed(lv_event_t *event) {
   const intptr_t userData = reinterpret_cast<intptr_t>(lv_event_get_user_data(event));
   switch (userData) {
     case 0:
-      openActionModal(AlarmTarget::Master);
+      openActionModal(AlarmTarget::Perimeter);
       break;
     case 1:
-      openActionModal(AlarmTarget::Garage);
+      openActionModal(AlarmTarget::Interior);
       break;
     case 2:
+      openActionModal(AlarmTarget::Garage);
+      break;
+    case 3:
       openActionModal(AlarmTarget::GarageDoor);
       break;
   }
@@ -591,7 +605,7 @@ void onPrimaryActionPressed(lv_event_t *event) {
 
   Serial.printf("[UI] Executing %s for %s\n",
                 pendingAction == AlarmAction::Arm ? "arm" : "disarm",
-                selectedTarget == AlarmTarget::Master ? "master" : "garage");
+                targetName(selectedTarget));
   executeAlarmAction(selectedTarget, pendingAction, pinBuffer);
   closeActionModal();
 }
@@ -640,7 +654,7 @@ void onArmModePressed(lv_event_t *event) {
   }
 
   Serial.printf("[UI] Executing arm %s for %s\n", modeName != nullptr ? modeName : "unknown",
-                selectedTarget == AlarmTarget::Master ? "master" : "garage");
+                targetName(selectedTarget));
   executeAlarmAction(selectedTarget, AlarmAction::Arm, "");
   closeActionModal();
 }
@@ -672,7 +686,7 @@ void onPinSubmitPressed(lv_event_t *event) {
 
   Serial.printf("[UI] Executing %s for %s\n",
                 pendingAction == AlarmAction::Arm ? "arm" : "disarm",
-                selectedTarget == AlarmTarget::Master ? "master" : "garage");
+                targetName(selectedTarget));
   executeAlarmAction(selectedTarget, pendingAction, pinBuffer);
   closeActionModal();
 }
@@ -682,10 +696,15 @@ void onPinSubmitPressed(lv_event_t *event) {
 #if defined(WOKWI_SIM)
 void handleSimInputChar(char c) {
   switch (c) {
-    case 'm':
-    case 'M':
-      openActionModal(AlarmTarget::Master);
-      Serial.println("[SIM] Opened Master modal");
+    case 'p':
+    case 'P':
+      openActionModal(AlarmTarget::Perimeter);
+      Serial.println("[SIM] Opened Perimeter modal");
+      return;
+    case 'i':
+    case 'I':
+      openActionModal(AlarmTarget::Interior);
+      Serial.println("[SIM] Opened Interior modal");
       return;
     case 'g':
     case 'G':
@@ -1111,13 +1130,16 @@ void setupUi() {
   lv_label_set_text(statusLabel, "");
   lv_obj_add_flag(statusLabel, LV_OBJ_FLAG_HIDDEN);
 
-  masterPanel =
-      createAlarmPanel(container, "Master", &masterStateLabel, &masterStateDot, AlarmTarget::Master);
+  perimeterPanel = createAlarmPanel(container, "Perimeter", &perimeterStateLabel, &perimeterStateDot,
+                                    AlarmTarget::Perimeter);
+  interiorPanel = createAlarmPanel(container, "Interior", &interiorStateLabel, &interiorStateDot,
+                                   AlarmTarget::Interior);
   garagePanel =
       createAlarmPanel(container, "Garage", &garageStateLabel, &garageStateDot, AlarmTarget::Garage);
   garageDoorPanel = createAlarmPanel(container, "Garage Door", &garageDoorStateLabel,
                                      &garageDoorStateDot, AlarmTarget::GarageDoor);
-  LV_UNUSED(masterPanel);
+  LV_UNUSED(perimeterPanel);
+  LV_UNUSED(interiorPanel);
   LV_UNUSED(garagePanel);
 
   updateAlarmLabels();

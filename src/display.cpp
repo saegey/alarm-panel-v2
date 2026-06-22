@@ -27,6 +27,7 @@ uint32_t lastTouchDebugMs = 0;
 lv_point_t lastTouchPoint{};
 bool hasLastTouchPoint = false;
 uint8_t stableTouchSamples = 0;
+bool touchSessionActive = false;
 
 constexpr uint8_t BACKLIGHT_LEDC_CHANNEL = 0;
 constexpr uint32_t BACKLIGHT_LEDC_FREQ = 5000;
@@ -94,6 +95,10 @@ void setupDisplay() {
 }
 
 void setupTouch() {
+#if defined(WOKWI_SIM)
+  Serial.println("[SIM] Touch disabled in Wokwi: use serial controls instead");
+  return;
+#endif
   pinMode(PinConfig::TOUCH_IRQ_PIN, INPUT_PULLUP);
   touchSpi.begin(PinConfig::TOUCH_SCLK_PIN, PinConfig::TOUCH_MISO_PIN,
                  PinConfig::TOUCH_MOSI_PIN, PinConfig::TOUCH_CS_PIN);
@@ -158,6 +163,10 @@ bool mapTouchPoint(const TS_Point &rawPoint, lv_point_t &mappedPoint) {
 void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   LV_UNUSED(drv);
 
+#if defined(WOKWI_SIM)
+  data->state = LV_INDEV_STATE_RELEASED;
+  return;
+#endif
   const uint32_t now = millis();
   const int irqLevel = digitalRead(PinConfig::TOUCH_IRQ_PIN);
   const bool touched = touch.touched();
@@ -178,6 +187,7 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   if (irqLevel == HIGH && !touched) {
     hasLastTouchPoint = false;
     stableTouchSamples = 0;
+    touchSessionActive = false;
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
@@ -185,6 +195,7 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   if (!touched) {
     hasLastTouchPoint = false;
     stableTouchSamples = 0;
+    touchSessionActive = false;
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
@@ -192,6 +203,7 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   const TS_Point rawPoint = touch.getPoint();
   if (rawPoint.z < PinConfig::TOUCH_PRESSURE_MIN) {
     stableTouchSamples = 0;
+    touchSessionActive = false;
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
@@ -219,6 +231,7 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
 
   if (!mapTouchPoint(rawPoint, mappedPoint)) {
     stableTouchSamples = 0;
+    touchSessionActive = false;
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
@@ -229,6 +242,7 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     if (abs(mappedPoint.x - lastTouchPoint.x) > kMaxStepPx ||
         abs(mappedPoint.y - lastTouchPoint.y) > kMaxStepPx) {
       stableTouchSamples = 0;
+      touchSessionActive = false;
       data->state = LV_INDEV_STATE_RELEASED;
       return;
     }
@@ -243,7 +257,10 @@ void touchRead(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  resetIdleTimer();
+  if (!touchSessionActive) {
+    resetIdleTimer();
+    touchSessionActive = true;
+  }
 
   if (now - lastTouchLogMs >= 150) {
     Serial.printf("[TOUCH] raw=(%d,%d,%d) mapped=(%d,%d)\n", rawPoint.x, rawPoint.y, rawPoint.z,

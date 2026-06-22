@@ -8,7 +8,8 @@
 
 // --- Globals owned by this module ---
 
-char masterAlarmState[32] = "unknown";
+char perimeterAlarmState[32] = "unknown";
+char interiorAlarmState[32] = "unknown";
 char garageAlarmState[32] = "unknown";
 char garageDoorState[32] = "unknown";
 char weatherText[32] = "--";
@@ -93,26 +94,6 @@ bool publishAlarmoCommand(const char *command, const char *area, const char *cod
   return mqttClient.publish(Secrets::ALARMO_COMMAND_TOPIC, payload);
 }
 
-bool publishAlarmoCommand(const char *command, const char *code) {
-  if (!mqttReady()) {
-    Serial.println("[MQTT] Alarmo publish skipped, client not connected");
-    return false;
-  }
-
-  char payload[128];
-  const int written = (code != nullptr && code[0] != '\0')
-                          ? snprintf(payload, sizeof(payload),
-                                     "{\"command\":\"%s\",\"code\":\"%s\"}", command, code)
-                          : snprintf(payload, sizeof(payload), "{\"command\":\"%s\"}", command);
-
-  if (written <= 0 || written >= static_cast<int>(sizeof(payload))) {
-    Serial.println("[MQTT] Alarmo payload too large");
-    return false;
-  }
-
-  Serial.printf("[MQTT] Publish %s -> %s\n", Secrets::ALARMO_COMMAND_TOPIC, payload);
-  return mqttClient.publish(Secrets::ALARMO_COMMAND_TOPIC, payload);
-}
 }  // namespace
 
 bool executeAlarmAction(AlarmTarget target, AlarmAction action, const char *code) {
@@ -153,12 +134,20 @@ bool executeAlarmAction(AlarmTarget target, AlarmAction action, const char *code
     return false;
   }
 
-  bool success = false;
-  if (target == AlarmTarget::Master) {
-    success = publishAlarmoCommand(command, code);
-  } else {
-    success = publishAlarmoCommand(command, "garage", code);
+  const char *area = nullptr;
+  if (target == AlarmTarget::Perimeter) {
+    area = "perimeter";
+  } else if (target == AlarmTarget::Interior) {
+    area = "interior";
+  } else if (target == AlarmTarget::Garage) {
+    area = "garage";
   }
+
+  if (area == nullptr) {
+    return false;
+  }
+
+  bool success = publishAlarmoCommand(command, area, code);
 
   if (success) {
     showToast("Command sent");
@@ -219,8 +208,15 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
     return;
   }
 
-  if (strcmp(topic, Secrets::ALARMO_MASTER_STATE_TOPIC) == 0) {
-    strlcpy(masterAlarmState, message, sizeof(masterAlarmState));
+  if (strcmp(topic, Secrets::ALARMO_PERIMETER_STATE_TOPIC) == 0) {
+    strlcpy(perimeterAlarmState, message, sizeof(perimeterAlarmState));
+    updateAlarmLabels();
+    checkTriggeredState();
+    return;
+  }
+
+  if (strcmp(topic, Secrets::ALARMO_INTERIOR_STATE_TOPIC) == 0) {
+    strlcpy(interiorAlarmState, message, sizeof(interiorAlarmState));
     updateAlarmLabels();
     checkTriggeredState();
     return;
@@ -259,7 +255,8 @@ bool connectMqtt() {
   mqttClient.subscribe(Secrets::MQTT_TOPIC_DISPLAY_TIMEOUT);
   mqttClient.subscribe(Secrets::MQTT_TOPIC_WEATHER_STATE);
   mqttClient.subscribe(Secrets::MQTT_TOPIC_GARAGE_DOOR_STATE);
-  mqttClient.subscribe(Secrets::ALARMO_MASTER_STATE_TOPIC);
+  mqttClient.subscribe(Secrets::ALARMO_PERIMETER_STATE_TOPIC);
+  mqttClient.subscribe(Secrets::ALARMO_INTERIOR_STATE_TOPIC);
   mqttClient.subscribe(Secrets::ALARMO_GARAGE_STATE_TOPIC);
   updateMqttStatusLabel(true);
   return true;

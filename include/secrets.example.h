@@ -21,7 +21,8 @@ constexpr char MQTT_TOPIC_GARAGE_DOOR_STATE[] = "garage/door/state";
 constexpr char MQTT_TOPIC_WEATHER_STATE[] = "weather/kbfi/state";
 
 constexpr char ALARMO_COMMAND_TOPIC[] = "alarmo/command";
-constexpr char ALARMO_MASTER_STATE_TOPIC[] = "alarmo/state";
+constexpr char ALARMO_PERIMETER_STATE_TOPIC[] = "alarmo/perimeter/state";
+constexpr char ALARMO_INTERIOR_STATE_TOPIC[] = "alarmo/interior/state";
 constexpr char ALARMO_GARAGE_STATE_TOPIC[] = "alarmo/garage/state";
 
 constexpr char MQTT_TOPIC_DISPLAY_TIMEOUT[] = "home/keypad/display/timeout";

@@ -40,6 +40,6 @@ constexpr uint16_t TOUCH_RAW_MAX_Y = 3700;
 constexpr uint16_t TOUCH_PRESSURE_MIN = 50;
 
 // Temporary diagnostics for touch electrical debugging.
-constexpr bool TOUCH_DEBUG_MODE = true;
+constexpr bool TOUCH_DEBUG_MODE = false;
 constexpr uint16_t TOUCH_DEBUG_INTERVAL_MS = 100;
 }  // namespace PinConfig

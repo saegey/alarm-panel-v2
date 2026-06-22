@@ -180,7 +180,7 @@ void setup() {
   connectMqtt();
 
 #if defined(WOKWI_SIM)
-  Serial.println("[SIM] Controls: m=master g=garage d=door a=primary h/w/n/v=arm modes 0-9 pin s=submit c=cancel x=backspace");
+  Serial.println("[SIM] Controls: p=perimeter i=interior g=garage d=door a=primary h/w/n/v=arm modes 0-9 pin s=submit c=cancel x=backspace");
 #endif
 }
 

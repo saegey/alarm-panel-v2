@@ -16,13 +16,6 @@
       "top": -10,
       "left": 260,
       "attrs": {}
-    },
-    {
-      "type": "wokwi-xpt2046",
-      "id": "touch",
-      "top": 180,
-      "left": 260,
-      "attrs": {}
     }
   ],
   "connections": [
@@ -36,16 +29,9 @@
     [ "esp:D4", "tft:RST", "green" ],
     [ "esp:D21", "tft:LED", "green" ],
     [ "esp:3V3", "tft:VCC", "red" ],
-    [ "esp:GND.1", "tft:GND", "black" ],
-
-    [ "esp:D32", "touch:MOSI", "blue" ],
-    [ "esp:D39", "touch:MISO", "blue" ],
-    [ "esp:D25", "touch:SCK", "blue" ],
-    [ "esp:D33", "touch:CS", "blue" ],
-    [ "esp:3V3", "touch:VCC", "red" ],
-    [ "esp:GND.1", "touch:GND", "black" ]
+    [ "esp:GND.1", "tft:GND", "black" ]
   ],
-    "serialMonitor": {
+  "serialMonitor": {
     "convertEol": true,
     "display": "always"
   }

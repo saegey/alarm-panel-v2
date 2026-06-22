@@ -15,7 +15,8 @@ enum class DisplayState {
 };
 
 enum class AlarmTarget {
-  Master,
+  Perimeter,
+  Interior,
   Garage,
   GarageDoor,
 };
@@ -74,7 +75,8 @@ extern uint32_t lastLvglTickMs;
 
 // --- Extern globals: mqtt.cpp ---
 
-extern char masterAlarmState[32];
+extern char perimeterAlarmState[32];
+extern char interiorAlarmState[32];
 extern char garageAlarmState[32];
 extern char garageDoorState[32];
 extern char weatherText[32];
